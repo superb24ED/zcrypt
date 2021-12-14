@@ -22,8 +22,8 @@ III.½âÃÜ¹ý³Ì
 
 */
 #include "biguint.h"
-//rsa1024
-#define RSA_UINT_SIZE 128   // MAX_BIGUINT_SIZE >=  RSA_UINT_SIZE
+//rsa512
+#define RSA_UINT_SIZE 64   // MAX_BIGUINT_SIZE >=  RSA_UINT_SIZE
 
 //default eky
 #define DEFAULT_EKY_EXPONENT 0x10001
@@ -50,7 +50,6 @@ public:
 
 	//int cast 
 	static bool get_dky(uint64_t p, uint64_t q, const rsa_key& eky, rsa_key& dky);
-	static bool get_dky(uint64_t phai, uint64_t eky, rsa_key& dky);
 
 
 	rsa_uint crypt(rsa_uint &base_text);
