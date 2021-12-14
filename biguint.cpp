@@ -33,6 +33,7 @@ BIGUINT::BIGUINT()
 }
 
 BIGUINT::BIGUINT(uint64_t b)
+
 {
 	memset(byte_part, 0, sizeof(byte_part));
 	uint32_t index = sizeof(byte_part) - 1;
@@ -110,8 +111,9 @@ bool BIGUINT::operator!=(const BIGUINT& b) const
 
 bool BIGUINT::is_little_edian()
 {
-	uint16_t test = 0x0001;
-	return *((uint8_t*)&test);
+	uint16_t* test = new uint16_t;
+	*test = 0x0001;
+	return *(uint8_t*)test;
 }
 
 uint16_t BIGUINT::u16edian_trans(uint16_t t)
@@ -150,8 +152,11 @@ uint64_t BIGUINT::u64edian_trans(uint64_t t)
 
 BIGUINT BIGUINT::operator<<(uint32_t m) const
 {
+	if (m == 0)
+		return *this;
 	BIGUINT result = 0;
-	m %= sizeof(this->byte_part);
+	if (m >= sizeof(this->byte_part))
+		return 0;
 	uint32_t shift_bytes = m >> 3;
 	if (m & 0x7) {
 		uint16_t temp = 0;
@@ -173,8 +178,11 @@ BIGUINT BIGUINT::operator<<(uint32_t m) const
 
 BIGUINT BIGUINT::operator>>(uint32_t m) const
 {
+	if (m == 0)
+		return *this;
 	BIGUINT result;
-	m %= sizeof(this->byte_part);
+	if (m >= sizeof(this->byte_part))
+		return 0;
 	uint32_t shift_bytes = m >> 3;
 	if (m & 0x7) {
 		uint16_t temp = 0;
@@ -265,7 +273,7 @@ BIGUINT BIGUINT::operator+(const BIGUINT& b) const
 	//uint32_t d1 = digit_count(*this) ;
 	//uint32_t d2 = digit_count(b);
 	//uint32_t start = scale - (d1 > d2 ? d1 : d2);
-	bool overflow_flag = 0;
+	int overflow_flag = 0;
 	for (int64_t i = sizeof(BIGUINT) - 1; i > -1; i--) {
 		temp.byte_part[i] += overflow_flag;
 		overflow_flag = (temp.byte_part[i] < overflow_flag);
@@ -456,30 +464,110 @@ void BIGUINT::show_binary()const
 }
 
 
-bool BIGUINT::miller_rabin_test() {
-	//rsa_int n = p - 1;
-	return true;
+bool BIGUINT::miller_rabin_test(uint32_t attempts)const {
+
+	if (*this == 2)
+		return true;
+	else if ((byte_part[sizeof(BIGUINT) - 1] & 0x1) && (*this != 1)) {//非1奇数
+		// gen k,q
+		//n-1 = 2**k * q
+		uint32_t k = 0;
+		BIGUINT q = *this - 1;
+		while ( (q.byte_part[sizeof(BIGUINT) - 1] & 0x1) == 0) {//q偶数时
+			if (q.byte_part[sizeof(BIGUINT) - 1]) {
+				q >>= 1;
+				k++;
+			}
+			else {
+				q >>= 8;
+				k += 8;
+			}
+		}
+
+		//calculate
+		BIGUINT a = 0;
+		BIGUINT result = 0;
+		uint32_t j = 0;
+		while (attempts) {
+			j = 0;
+			attempts--;
+			do {
+				//gen a
+				//get this bits
+				a = gen_random_integer(this->get_binary_bits()) % *this;
+			} while (a < 2);
+			while (j < k) {//存在j,使得  a ** (2**j * q） mod n = n-1
+				result = a.modulus_pow(q, *this);
+				if ((result == (*this - 1)) || (result == 1)) {
+					if (attempts == 0)
+						return true;
+					else
+						break;
+				}
+				else {
+					if (j == k - 1)
+						return false;
+					j++;
+
+					a = a.modulus_mul(a, *this);//a取平方,进行二次探测
+				}
+
+			}
+
+		}
+	}
+	return false;
 }
 
-bool BIGUINT::is_prime()
+bool BIGUINT::prime_enum_test() const
+{
+	if (*this == 2 || *this == 3)
+		return true;
+	else if ((*this == 1) || (((this->byte_part[sizeof(byte_part) - 1]) & 0x1) == 0))
+		return false;
+	else {
+		for (BIGUINT i = 3; i < *this; i += 2)
+			if (*this % i == 0)
+				return false;
+		return true;
+	}
+
+}
+
+bool BIGUINT::is_prime()const
 {/*
  素性判断
  */
-	int attempts = 10;
-	//Miller-Rabbin测试算法
-	while (attempts--) {
-		if (!this->miller_rabin_test())
+	if (*this == 2)
+		return true;
+	else if ((*this >> BIGUINT_ISPRIME_ENUM_BITS_BORDER) == 0) //比较小的数字，自动换为枚举法
+		return prime_enum_test();
+	else {
+		//Miller-Rabin测试算法
+		if (!this->miller_rabin_test(BIGUINT_ISPRIME_MILLER_RABIN_ATTEMPS))
 			return false;
+
+		//todo: 可以在后面加上其它判别法
+
 	}
-
-	//todo:二次探测
-
-
-	//todo:费马测试
-
-
-
 	return true;
+}
+
+uint32_t BIGUINT::get_binary_bits()const
+{
+	uint32_t bytes_index = 0;
+	while ((byte_part[bytes_index] == 0) &&
+		(bytes_index < (sizeof(byte_part))))
+		bytes_index++;
+	if (bytes_index == sizeof(byte_part))
+		return 0;
+	else {
+		int i = 7;
+		while ( i >= 0 && !(byte_part[bytes_index] >> i & 1))
+			i--;
+		return ((sizeof(byte_part) - bytes_index - 1) << 3) + (i + 1);
+		
+	}
 }
 
 BIGUINT BIGUINT::operator%(const BIGUINT& modulus)const
@@ -507,9 +595,15 @@ BIGUINT BIGUINT::operator%(const BIGUINT& modulus)const
 		}
 	}*/
 	BIGUINT this_copy = *this;
-	while (this_copy >= modulus ) {
-		this_copy -= modulus;
+	BIGUINT *modulus_copy = new BIGUINT(modulus);
+	while (this_copy >= modulus) {
+		while (this_copy >= *modulus_copy) {//将算法时间优化至o(log n)
+			this_copy -= *modulus_copy;
+			*modulus_copy += *modulus_copy;
+		}
+		*modulus_copy = modulus;
 	}
+	delete modulus_copy;
 	return this_copy;
 }
 
@@ -519,7 +613,12 @@ bool BIGUINT::operator%=(const BIGUINT& modulus)
 	return true;
 }
 
-BIGUINT BIGUINT::modulus_pow(const BIGUINT& exponent, const BIGUINT& modulus)const
+BIGUINT BIGUINT::modulus_pow(const BIGUINT& exponent, const BIGUINT& modulus) const
+{
+	return modulus_pow2(exponent,modulus);
+}
+
+BIGUINT BIGUINT::modulus_pow1(const BIGUINT& exponent, const BIGUINT& modulus)const
 {
 	//Montgomery algorithm
 	// 
@@ -527,28 +626,94 @@ BIGUINT BIGUINT::modulus_pow(const BIGUINT& exponent, const BIGUINT& modulus)con
 
 	//分而治之
 	if (exponent == 0)	//指数为0，无脑返回1就好
-		return 1;
+		if (*this != 0)
+			return 1;
+		else {
+			fprintf(stderr, "错误，调用乘方取模时，底数与指数不能同时为0");
+			abort();
+		}
 	else if (*this == 0)
 		return 0;
-	else if (*this > modulus)
-		return (*this % modulus).modulus_pow(exponent, modulus);//太大了，取小一点
+	else if (*this > modulus) {
+		BIGUINT temp = *this % modulus;
+		if (temp != 0)
+			return temp.modulus_pow(exponent, modulus);//太大了，取小一点
+		else
+			return 0;
+	}
 	else {
 		if (exponent.byte_part[sizeof(BIGUINT) - 1] & 0x1) {
-			return this->modulus_mul(this->modulus_pow(exponent - 1, modulus), modulus);//是奇数，把落单的揪出来
+			return this->modulus_mul1(this->modulus_pow(exponent - 1, modulus), modulus);//是奇数，把落单的揪出来
 		}
 		else {
 			BIGUINT temp = this->modulus_pow(exponent >> 1, modulus);//偶数，裂开大法
-			return temp.modulus_mul(temp, modulus);
+			return temp.modulus_mul1(temp, modulus);
 		}
 	}
 }
+BIGUINT BIGUINT::modulus_pow2(const BIGUINT& exponent, const BIGUINT& modulus)const {
 
-BIGUINT BIGUINT::modulus_mul(const BIGUINT& b, const BIGUINT& modulus)const
+	BIGUINT f(*this % modulus);
+	if (exponent == 0)	//指数为0，无脑返回1就好
+		if (!*this)
+			return 1;
+		else{
+			fprintf(stderr, "错误，调用乘方取模时，底数与指数不能同时为0");
+			abort();
+		}
+	else if (f == 0)
+		return 0;
+	else {
+		uint32_t d = 0;
+		BIGUINT* q = new BIGUINT(exponent),*g=new BIGUINT(f);
+		int i = 0;
+		while ((i < sizeof(q->byte_part) - 1) && (q->byte_part[i] == 0))
+			i++;
+		int index = 7;
+		d = (q->byte_part[i] >> index) & 1;
+		while (d == 0) {
+			index--;
+			d = (q->byte_part[i] >> index) & 1;
+		}
+		if (index)
+			while (index) {
+				index--;
+				d = (q->byte_part[i] >> index) & 1;
+				f = f.modulus_mul2(f, modulus);
+				if (d)
+					f = f.modulus_mul(*g, modulus);
+			}
+		i++;
+
+		while (i < sizeof(q->byte_part)) {
+			index = 8;
+			while (index) {
+				index--;
+				d = (q->byte_part[i] >> index) & 1;
+				f = f.modulus_mul(f, modulus);
+				if (d)
+					f = f.modulus_mul(*g, modulus);
+			}
+			i++;
+		}
+		delete q;
+		delete g;
+		return f;
+	}
+
+}
+
+
+BIGUINT BIGUINT::modulus_mul(const BIGUINT& b, const BIGUINT& modulus) const
+{
+	return modulus_mul2(b,modulus);//选取算法2作为默认算法
+}
+
+BIGUINT BIGUINT::modulus_mul1(const BIGUINT& b, const BIGUINT& modulus)const
 {
 	//Montgomery algorithm
 //相乘取模
 	//分而治之
-
 	if ((b == 0) || (*this == 0))
 		return 0;
 	else if (b == 1)
@@ -557,29 +722,93 @@ BIGUINT BIGUINT::modulus_mul(const BIGUINT& b, const BIGUINT& modulus)const
 		return (b % modulus);
 	else {
 		if (*this > modulus)//缩小乘数规模
-			return (*this % modulus).modulus_mul(b, modulus);
+			return (*this % modulus).modulus_mul1(b, modulus);
 		else if (b > modulus)
-			return this->modulus_mul(b % modulus, modulus);
+			return this->modulus_mul1(b % modulus, modulus);
 		else if (b.byte_part[sizeof(b.byte_part) - 1] & 1) //是奇数，把落单的揪出来
-			return this->modulus_add(this->modulus_mul(b - 1, modulus), modulus);
+			return this->modulus_add(this->modulus_mul1(b - 1, modulus), modulus);
 		else {//裂开大法好
-			BIGUINT temp = this->modulus_mul(b >> 1, modulus);
+			BIGUINT temp = this->modulus_mul1(b >> 1, modulus);
 			return temp.modulus_add(temp, modulus);
 		}
 	}
+}
 
+BIGUINT BIGUINT::modulus_mul2(const BIGUINT& b, const BIGUINT& modulus) const
+{
+	if ((b == 0) || (*this == 0))
+		return 0;
+	else if (b == 1)
+		return (*this % modulus);
+	else if (*this == 1)
+		return (b % modulus);
+	else {
 
-	return BIGUINT();
+		BIGUINT f = *this % modulus;
+		uint32_t d = 0;
+		BIGUINT* q = new BIGUINT(b % modulus), * g = new BIGUINT(f);
+		int i = 0;
+		while ((i < sizeof(q->byte_part) - 1) && (q->byte_part[i] == 0))
+			i++;
+		int index = 7;
+		d = (q->byte_part[i] >> index) & 1;
+		while (d == 0) {
+			index--;
+			d = (q->byte_part[i] >> index) & 1;
+		}
+		if (index)
+			while (index) {
+				index--;
+				d = (q->byte_part[i] >> index) & 1;
+				f = f.modulus_add(f, modulus);
+				if (d)
+					f = f.modulus_add(*g, modulus);
+			}
+		i++;
+
+		while (i < sizeof(q->byte_part)) {
+			index = 8;
+			while (index) {
+				index--;
+				d = (q->byte_part[i] >> index) & 1;
+				f = f.modulus_add(f, modulus);
+				if (d)
+					f = f.modulus_add(*g, modulus);
+			}
+			i++;
+		}
+		delete q;
+		delete g;
+		return f;
+	}
 }
 
 BIGUINT BIGUINT::modulus_add(const BIGUINT& b, const BIGUINT& modulus)const
 {
-	BIGUINT temp1 = (b % modulus);
-	BIGUINT temp2 = temp1 + (*this % modulus);
-	if (temp2 >= temp1)//没有溢出
+	BIGUINT *temp1 = new BIGUINT(b % modulus);
+	BIGUINT temp2 = *this % modulus;
+	temp2 = *temp1 + temp2;
+	if (temp2 >= *temp1) {//没有溢出
+return_normally:
+		delete temp1;
 		return temp2 % modulus;
+	}
 	else {		//发生了溢出
-		return temp2.modulus_add(BIGUINT::max_rsa_uint(), modulus);
+		/*这么做不会溢出.
+		* 证明:(以下全为正整数)
+		* 对于 (a+b)%n,
+		* 令a,b < n ,能表示最大数字为max, 则当a+b溢出时,有
+		* 
+		* 2n > a+b > max+1,
+		* max%n <= max-n
+		* 
+		* 证明不会溢出，令n>3 有
+		* a+b - (max+1) + max%n < (n-1) + (n-1) - (max+1) + max -n
+		*					    =n - 3 <= max
+		* 证明完毕
+		*/
+		delete temp1;
+		return BIGUINT::max_biguint() % modulus + temp2 + 1;
 	}
 
 }
@@ -590,14 +819,25 @@ BIGUINT BIGUINT::int_dev(const BIGUINT& b) const
 		fprintf(stderr, "整数除法出现错误: 除数不能为0\n");
 		abort();
 	}
-	BIGUINT result;
-	BIGUINT temp = *this;
-	while (temp > b) {
-		temp -= b;
-		result++;
+	BIGUINT result, *count_b = new BIGUINT(1);
+	BIGUINT* temp1 = new BIGUINT(*this), * temp_b = new BIGUINT(b);
+	while (*temp1 > b) {
+		while (*temp1 > *temp_b) {
+			*temp1 -= *temp_b;
+			result += *count_b;
+
+			*temp_b += *temp_b;
+			*count_b += *count_b;
+			
+		}
+		*temp_b = b;
+		*count_b = 1;
 	}
-	if (temp == b)
+	if (*temp1 == b)
 		result++;
+	delete temp1;
+	delete temp_b;
+	delete count_b;
 	return result;
 }
 
@@ -605,6 +845,7 @@ BIGUINT BIGUINT::gcd(const BIGUINT& b) const
 {
 	return b == 0 ? *this : b.gcd(*this % b);
 }
+
 
 /*
 bool BIGUINT::ext_gcd(const BIGUINT& a, const BIGUINT& b, BIGUINT& d, BIGUINT& x, BIGUINT& y, bool sgn_y, bool sgn_x )
@@ -645,7 +886,12 @@ BIGUINT BIGUINT::gcd(const BIGUINT& a, const BIGUINT& b)
 
 BIGUINT BIGUINT::modulus_inv(const BIGUINT& modulus) const
 {
-	if (*this==0 || modulus==0 || this->gcd(modulus) != 1)//不存在逆元! 返回0
+	return modulus_inv2(modulus);
+}
+
+BIGUINT BIGUINT::modulus_inv1(const BIGUINT& modulus) const
+{
+	if (*this == 0 || modulus == 0 || this->gcd(modulus) != 1)//不存在逆元! 返回0
 		return 0;
 	BIGUINT result(1);
 	while ((result < modulus) &&
@@ -656,6 +902,37 @@ BIGUINT BIGUINT::modulus_inv(const BIGUINT& modulus) const
 	else return 0;
 }
 
+BIGUINT BIGUINT::modulus_inv2(const BIGUINT& modulus) const
+{
+	//解同余方程:ax=1 (mod n)  ->  解方程ax = 1 + bn , 其中 a,n已知，b,x都为小于n的正整数,需要返回的是x
+	// 问题转换成（1+bn)%a=0的时候，求(1+bn)/a, 即(1 + b*modulus)/*this
+	if (*this == 1)
+		return 1;
+	else if (modulus == 2)
+		if (this->byte_part[sizeof(this->byte_part) - 1] & 1)
+			return 1;
+		else return 0;
+	if (*this == 0 || modulus == 0 || this->gcd(modulus) != 1)//不存在逆元! 返回0
+		return 0;
+
+	BIGUINT temp1 = 1,*b=new BIGUINT(0), * temp2 = new BIGUINT(modulus%*this), count = BIGUINT(0),*inc=new BIGUINT(modulus.int_dev(*this));
+	while (*b < *this) {//o(nlog(n)
+		*b = *b + 1;//用++导致出现错误
+		temp1 += *temp2;
+		count += *inc;
+		count += temp1.int_dev(*this);
+		temp1 %= *this;
+		//*temp2 = *this;
+		if (temp1  == 0) {
+			delete b;
+			delete temp2;
+			delete inc;
+			//delete count;
+			return count;
+		}
+	}
+}
+
 
 
 BIGUINT BIGUINT::zero()
@@ -663,7 +940,7 @@ BIGUINT BIGUINT::zero()
 	return 0;
 }
 
-BIGUINT BIGUINT::max_rsa_uint()
+BIGUINT BIGUINT::max_biguint()
 {
 	BIGUINT result;
 	memset(result.byte_part, 0xff, sizeof(result.byte_part));
@@ -715,8 +992,6 @@ BIGUINT BIGUINT::gen_random_integer(uint32_t bits)
 		else //impossible
 			return 0;
 
-	//末位置1
-	//odd_buffer[sizeof(odd_buffer) - 1] |= 0x1;
 	return BIGUINT(odd_buffer, sizeof(BIGUINT));
 
 }
@@ -728,7 +1003,7 @@ BIGUINT BIGUINT::gen_random_odd(uint32_t bits) {
 
 BIGUINT BIGUINT::gen_random_prime(uint32_t bits, uint32_t attempts)
 {
-	//生成大素数
+	//生成大素数 失败返回0
 	BIGUINT result = 0;
 	while (attempts--) {
 		result = gen_random_odd(bits);

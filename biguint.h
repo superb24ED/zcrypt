@@ -1,8 +1,14 @@
 #ifndef __BIGINT_H_
 #define __BIGINT_H_
-
+/*
+author:SupreME
+*/
 	
-#define MAX_BIGUINT_SIZE 512	 //大整数的大小(字节),按照实际情况定义
+#define MAX_BIGUINT_SIZE 256	 //大整数的大小(字节),按照实际情况定义
+
+//增加以下两个值可以增加素数判断可信度，但是可能会延长判断时间
+#define BIGUINT_ISPRIME_ENUM_BITS_BORDER 0 //is_prime()的算法选择策略，过大将严重影响性能(更倾向于枚举，但是得到的是明确的判断)
+#define BIGUINT_ISPRIME_MILLER_RABIN_ATTEMPS 10	//miller_rabbin算法尝试次数,建议不小于10
 //大整数数据结构
 #include <stdint.h>
 #include<stdlib.h>
@@ -95,16 +101,22 @@ typedef union BIGUINT
 
 
 	//prime
-	bool miller_rabin_test();
-	bool is_prime();
+	bool miller_rabin_test(uint32_t attempts)const;
+	bool prime_enum_test()const;
 
+	bool is_prime()const;
+	uint32_t get_binary_bits()const;
 	//取模
 	BIGUINT operator%(const BIGUINT& modulus)const;
 	bool operator%=(const BIGUINT& modulus);
 	//乘方取模
 	BIGUINT modulus_pow(const BIGUINT& exponent, const BIGUINT& modulus)const;
+	BIGUINT modulus_pow1(const BIGUINT& exponent, const BIGUINT& modulus)const; //递归 会出现栈溢出
+	BIGUINT modulus_pow2(const BIGUINT& exponent, const BIGUINT& modulus)const; //动态优化
 	//相乘取模
 	BIGUINT modulus_mul(const BIGUINT& b, const BIGUINT& modulus)const;
+	BIGUINT modulus_mul1(const BIGUINT& b, const BIGUINT& modulus)const;
+	BIGUINT modulus_mul2(const BIGUINT& b, const BIGUINT& modulus)const;
 	//相加取模
 	BIGUINT modulus_add(const BIGUINT& b, const BIGUINT& modulus)const;
 
@@ -112,16 +124,16 @@ typedef union BIGUINT
 	//整数除法
 	BIGUINT int_dev(const BIGUINT& b) const;
 	BIGUINT gcd(const BIGUINT& b) const;
-	//static bool ext_gcd(const BIGUINT& a, const BIGUINT& b, BIGUINT& d, BIGUINT& x, BIGUINT& y, bool sgn_y = 0, bool sgn_x = 0); 
 	static BIGUINT gcd(const BIGUINT& a, const BIGUINT& b);
 
 
 	//尝试求模modulus的逆元(除法)
 	BIGUINT modulus_inv(const BIGUINT& modulus)const;
-
+	BIGUINT modulus_inv1(const BIGUINT& modulus) const;
+	BIGUINT modulus_inv2(const BIGUINT& modulus)const;
 	//指定大数生成
 	static BIGUINT zero();			//0
-	static BIGUINT max_rsa_uint();  //0xfffffffff......
+	static BIGUINT max_biguint();  //0xfffffffff......
 	static BIGUINT binary_ones(uint32_t bits);//bits个1组成的二进制数
 
 	static BIGUINT gen_random_integer(uint32_t bits);
