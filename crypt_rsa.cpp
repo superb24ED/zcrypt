@@ -38,12 +38,12 @@ bool rsa_key::gen_keypair(rsa_uint p, rsa_uint q, rsa_key& eky, rsa_key& dky, ui
 		//uint32_t p_bits = rand() & 0x3ff;
 
 	uint32_t p_bits = 0;
+
+	//保证p和q直接的距离超过scale*2,但又不至于差距过大，两者位数之差在2*scale到4*scale之间, 如对于rsa1024,为256bits 到512bit的位数差距
 	do {
 		p_bits = gen_rand() % (scale << 3);
-	} while ((p_bits > 16) &&
-		(p_bits < 1008) &&
-		(scale << 3) - (p_bits << 1) < 0xff);
-	uint32_t q_bits = (scale << 3) - p_bits;
+	} while ((p_bits < (scale*2)) ||	(p_bits > scale*3));
+	uint32_t q_bits = (scale << 3) - p_bits - 1;
 	if (p == 0 ) {
 		p = rsa_uint::gen_random_prime(p_bits, 200);//0.4ln(2^600) = 166.3
 		if (p == 0) {
@@ -59,10 +59,10 @@ bool rsa_key::gen_keypair(rsa_uint p, rsa_uint q, rsa_key& eky, rsa_key& dky, ui
 	}
 	if (q == 0) {
 		q= rsa_uint::gen_random_prime(q_bits, 200);//0.4ln(2^600) = 166.3
-		if (p == 0) {
+		if (q == 0) {
 			//_sleep(0x500u);
-			p = rsa_uint::gen_random_prime(q_bits, 200);
-			if (p == 0)
+			q = rsa_uint::gen_random_prime(q_bits, 200);
+			if (q == 0)
 				return false;
 		}
 	}
@@ -75,8 +75,6 @@ bool rsa_key::gen_keypair(rsa_uint p, rsa_uint q, rsa_key& eky, rsa_key& dky, ui
 	//计算
 
 	rsa_uint modulus = p * q, phai = (p - 1) * (q - 1);
-	if (rsa_uint::gcd(eky.exponent, phai) != 1)//预设的eky非法
-		return false;
 	eky.modulus = modulus;
 	eky.scale = scale;
 	if (eky.exponent == 0 ) {//尝试生成满足加密要求的情况下，尽量小的素数,失败则直接使用 DEFAULT_EKY_EXPONENT
@@ -91,12 +89,13 @@ bool rsa_key::gen_keypair(rsa_uint p, rsa_uint q, rsa_key& eky, rsa_key& dky, ui
 		else
 			eky.exponent = DEFAULT_EKY_EXPONENT;
 	}
-
+	else if (rsa_uint::gcd(eky.exponent, phai) != 1)//预设的eky非法
+		return false;
 	dky.modulus = modulus;
 	dky.scale = scale;
 
-	//核心：私钥dky.expo
-	dky.exponent = eky.exponent.modulus_inv(modulus);
+	//核心：私钥dky.exponent
+	dky.exponent = eky.exponent.modulus_inv(phai);
 	return true;
 }
 
@@ -122,12 +121,6 @@ bool rsa_key::get_dky(uint64_t p, uint64_t q, const rsa_key& eky, rsa_key& dky)
 {
 	return get_dky(p * q, eky, dky);
 }
-
-bool rsa_key::get_dky(uint64_t phai, uint64_t eky, rsa_key& dky)
-{
-	return get_dky(phai, eky, dky);
-}
-
 
 rsa_uint rsa_key::crypt(rsa_uint& base_text)
 {
