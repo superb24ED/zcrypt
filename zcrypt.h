@@ -3,6 +3,7 @@
 #include <windows.h> //just for sleep
 #include <iostream>
 
+#include "base64.h"
 //加密算法定义
 #include "crypt_aes.h"
 #include "crypt_rsa.h"

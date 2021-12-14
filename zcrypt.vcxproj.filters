@@ -24,6 +24,12 @@
     <ClInclude Include="biguint.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="crypt_aes.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="base64.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="crypt_rsa.cpp">
@@ -33,6 +39,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="biguint.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="crypt_aes.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="base64.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
